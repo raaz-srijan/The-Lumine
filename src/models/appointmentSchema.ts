@@ -14,6 +14,10 @@ export interface IAppointment extends Document {
     paymentStatus: "pending" | "paid";
     paymentMethod?: "cash" | "e-pay" ;
     notes?: string;               
+    usedItems?: {
+        productId: Types.ObjectId;
+        quantityUsed: number; // in base units
+    }[];
     addedBy: Types.ObjectId;    
     createdAt: Date;
     updatedAt: Date;
@@ -67,6 +71,10 @@ const appointmentSchema: Schema<IAppointment> = new Schema({
         type: String,
         maxlength: 500,
     },
+    usedItems: [{
+        productId: { type: mongoose.Schema.Types.ObjectId, ref: "Inventory" },
+        quantityUsed: { type: Number, default: 0 }
+    }],
     addedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",

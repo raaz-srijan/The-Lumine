@@ -101,11 +101,39 @@ export const getAppointments = async (req: Request, res: Response) => {
 };
 
 
-// 3. Update Appointment (Mark as Completed/Paid)
+import { Inventory } from "../models/inventorySchema.js";
+
+// 3. Update Appointment (Mark as Completed/Paid + Deduct Stock)
 export const updateAppointment = async (req: Request, res: Response) => {
     try {
-        const { services, status, paymentStatus } = req.body;
+        const { id } = req.params;
+        const { services, status, usedItems } = req.body;
         
+        const existingAppointment = await Appointment.findById(id);
+        if (!existingAppointment) return res.status(404).json({ message: "Appointment not found" });
+
+        // If status is changing to 'completed', and it wasn't already completed
+        if (status === "completed" && existingAppointment.status !== "completed") {
+            const itemsToDeduct = usedItems || existingAppointment.usedItems || [];
+            
+            if (itemsToDeduct.length > 0) {
+                // Deduct stock for each item
+                for (const item of itemsToDeduct) {
+                    const product = await Inventory.findById(item.productId);
+                    if (product) {
+                        if (product.stock < item.quantityUsed) {
+                            return res.status(400).json({ 
+                                success: false, 
+                                message: `Insufficient stock for ${product.name}. Required: ${item.quantityUsed}, Available: ${product.stock}` 
+                            });
+                        }
+                        product.stock -= item.quantityUsed;
+                        await product.save();
+                    }
+                }
+            }
+        }
+
         let updateData = { ...req.body };
 
         if (services) {
@@ -113,15 +141,18 @@ export const updateAppointment = async (req: Request, res: Response) => {
         }
 
         const appointment = await Appointment.findByIdAndUpdate(
-            req.params.id,
+            id,
             updateData,
             { new: true }
         );
 
-        if (!appointment) return res.status(404).json({ message: "Appointment not found" });
-        res.status(200).json(appointment);
-    } catch (error) {
-        res.status(500).json({ message: "Update failed" });
+        res.status(200).json({
+            success: true,
+            message: "Appointment updated and inventory adjusted",
+            data: appointment
+        });
+    } catch (error: any) {
+        res.status(500).json({ message: "Update failed", error: error.message });
     }
 };
 
