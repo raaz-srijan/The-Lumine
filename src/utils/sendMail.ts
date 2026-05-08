@@ -1,6 +1,8 @@
 import { ENV } from "../config/env.js";
 import { transporter } from "./transporter.js";
 
+
+//VERIFY-REGISTER-EMAIL
 export const verifyRegisterEmail = async (email: string, token: string) => {
     const verifyUrl = `${ENV.FRONTEND_URL}/verify/${token}`;
 
@@ -83,7 +85,7 @@ export const verifyRegisterEmail = async (email: string, token: string) => {
     }
 };
 
-
+//REQUEST-APPROVED
 export const requestApproved = async (email: string) => {
     const htmlContent = `
     <!DOCTYPE html>
@@ -163,8 +165,7 @@ export const requestApproved = async (email: string) => {
     }
 };
 
-
-
+//USER-REVOKED
 export const userRevoked = async (email: string, name: string) => {
     const htmlContent = `
     <!DOCTYPE html>
@@ -237,8 +238,7 @@ export const userRevoked = async (email: string, name: string) => {
     }
 };
 
-
-
+//USER-ROLE-ASSIGNED
 export const userRoleAssigned = async (email: string, name: string, roleName: string) => {
     const htmlContent = `
     <!DOCTYPE html>
@@ -306,5 +306,85 @@ export const userRoleAssigned = async (email: string, name: string, roleName: st
     } catch (error) {
         console.error("Lumine Role Assignment Mail Error:", error);
         throw new Error("Failed to send role assignment email");
+    }
+};
+
+//PASSWORD-CHANGED
+export const passwordChanged = async (email: string, name: string) => {
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Lumine | Security Alert</title>
+    </head>
+    <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #fcfcfc; margin: 0; padding: 0;">
+        <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; margin-top: 40px; margin-bottom: 40px; border: 1px solid #eeeeee;">
+            
+            <!-- Minimalist Branding -->
+            <tr>
+                <td style="padding: 40px 0; text-align: center; border-bottom: 1px solid #f0f0f0;">
+                    <h1 style="margin: 0; font-family: 'Times New Roman', serif; font-size: 20px; letter-spacing: 5px; text-transform: uppercase; color: #111111;">Lumine</h1>
+                    <p style="margin: 5px 0 0; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: #999999;">Security & Privacy</p>
+                </td>
+            </tr>
+
+            <!-- Content Section -->
+            <tr>
+                <td style="padding: 60px 50px; text-align: center;">
+                    <div style="margin-bottom: 25px;">
+                        <span style="background-color: #111111; color: #ffffff; padding: 5px 12px; font-size: 10px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; border-radius: 2px;">Update Confirmed</span>
+                    </div>
+
+                    <h2 style="font-family: 'Times New Roman', serif; font-size: 24px; color: #111111; margin: 0 0 20px; font-weight: normal; font-style: italic;">Your password has been updated.</h2>
+                    
+                    <p style="color: #555555; font-size: 14px; line-height: 1.8; margin-bottom: 30px;">
+                        Dear ${name},<br>
+                        This is a formal confirmation that the password for your <strong>Lumine Suite</strong> account was successfully changed. If this was you, no further action is required.
+                    </p>
+                    
+                    <!-- Safety Guard -->
+                    <div style="background-color: #fafafa; border: 1px solid #eeeeee; padding: 25px; text-align: left; border-radius: 2px;">
+                        <p style="margin: 0; font-size: 12px; color: #111111; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Wasn't you?</p>
+                        <p style="margin: 0; font-size: 13px; color: #666666; line-height: 1.6;">
+                            If you did not authorize this change, please contact our security concierge immediately to secure your account and registry data.
+                        </p>
+                    </div>
+                </td>
+            </tr>
+
+            <!-- Action Section -->
+            <tr>
+                <td style="padding: 0 50px 60px; text-align: center;">
+                    <a href="mailto:${ENV.SMTP_MAIL}" style="color: #C5A059; text-decoration: none; font-size: 12px; font-weight: bold; letter-spacing: 1.5px; text-transform: uppercase; border-bottom: 1px solid #C5A059; padding-bottom: 2px;">
+                        Report Unauthorized Activity
+                    </a>
+                </td>
+            </tr>
+
+            <!-- Footer Section -->
+            <tr>
+                <td style="padding: 40px; background-color: #111111; text-align: center;">
+                    <p style="margin: 0; color: #666666; font-size: 10px; letter-spacing: 1px; text-transform: uppercase;">Lumine Security Protocol</p>
+                    <p style="margin: 10px 0 0; color: #444444; font-size: 9px; line-height: 1.4;">
+                        This automated notification was sent to ${email} for your protection.
+                    </p>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    `;
+
+    try {
+        await transporter.sendMail({
+            from: `"Lumine Security" <${ENV.SMTP_MAIL}>`,
+            to: email,
+            subject: "Lumine | Password Change Confirmation",
+            html: htmlContent,
+        });
+    } catch (error) {
+        console.error("Lumine Password Change Mail Error:", error);
     }
 };

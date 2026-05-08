@@ -3,7 +3,7 @@ import { User } from "../models/userSchema.js";
 import bcrypt from "bcrypt";
 import { Role } from "../models/roleSchema.js";
 import { generateJWT, generateRefreshJWT, verifyJWT, verifyRefreshJWT, type PayloadType } from "../utils/generateToken.js";
-import { requestApproved, userRevoked, userRoleAssigned, verifyRegisterEmail } from "../utils/sendMail.js";
+import { passwordChanged, requestApproved, userRevoked, userRoleAssigned, verifyRegisterEmail } from "../utils/sendMail.js";
 
 // REFRESH TOKEN
 export const refreshToken = async (req: Request, res: Response) => {
@@ -222,40 +222,39 @@ export const assignRole = async(req:Request, res:Response) => {
 }
 
 //UPDATE-OWN-DETAILS
-export const updateMe = async(req:Request, res:Response) => {
+export const updateMe = async (req: Request, res: Response) => {
     try {
-        if(!req.user)
-            return res.status(403).json({success:false, message:"Please login"});
+        if (!req.user)
+            return res.status(403).json({ success: false, message: "Authentication required" });
 
         const userId = req.user.id;
-
         const user = await User.findById(userId).select("+password");
 
-        if(!user)
-            return res.status(404).json({success:false, message:"User not found"});
+        if (!user)
+            return res.status(404).json({ success: false, message: "Guest registry not found" });
 
-        const {name, email, oldPassword, newPassword, phone} = req.body;
+        const { name, email, oldPassword, newPassword, phone } = req.body;
         
         let needReapproval = false;
         const updateData: any = {};
 
-        if(email && email !== user.email) {
-            const emailExists = await User.findOne({email:email.toLowerCase()});
-            if(emailExists)
-                return res.status(400).json({success:false, message:"Email already in use"});
+        if (email && email.toLowerCase().trim() !== user.email) {
+            const emailExists = await User.findOne({ email: email.toLowerCase().trim() });
+            if (emailExists)
+                return res.status(400).json({ success: false, message: "Email is already associated with another account" });
 
             updateData.email = email.toLowerCase().trim();
-            needReapproval = true;
+            needReapproval = true; 
         }
 
         if (newPassword) {
             if (!oldPassword) {
-                return res.status(400).json({ message: "Please provide your current password to set a new one" });
+                return res.status(400).json({ success: false, message: "Current password is required to authorize this change" });
             }
             
             const isMatch = await bcrypt.compare(oldPassword, user.password);
             if (!isMatch) {
-                return res.status(401).json({ message: "Current password incorrect" });
+                return res.status(401).json({ success: false, message: "The current password provided is incorrect" });
             }
 
             updateData.password = await bcrypt.hash(newPassword, 12);
@@ -264,19 +263,35 @@ export const updateMe = async(req:Request, res:Response) => {
         if (name) updateData.name = name.trim();
         if (phone) updateData.phone = phone.trim();
 
-        if(needReapproval)
-            updateData.isApproved = false;
+        if (needReapproval) updateData.isApproved = false;
 
-        const updateUser = await User.findByIdAndUpdate(userId, {$set:updateData}, {new:true});
+        if (newPassword) {
+            const recipientEmail = updateData.email || user.email;
+            const recipientName = updateData.name || user.name;
+            
+            passwordChanged(recipientEmail, recipientName).catch(err => 
+                console.error("Lumine Security Mailer Error:", err)
+            );
+        }
 
-        return res.status(200).json({success:true, message: needReapproval ? "Details updated. Account pending re-approval due to sensitive changes." : "Profile updated successfully", data:updateUser});
+        const updatedUser = await User.findByIdAndUpdate(userId, { $set: updateData }, { new: true });
 
-        
+        return res.status(200).json({
+            success: true, 
+            message: needReapproval 
+                ? "Profile updated. Due to sensitive changes, your account is pending re-approval." 
+                : "Your profile has been elegantly updated.", 
+            data: updatedUser
+        });
+
     } catch (error: any) {
-        return res.status(500).json({success:false, message:"Internal Server Error", error:error.message});
+        return res.status(500).json({ 
+            success: false, 
+            message: "Internal Server Error", 
+            error: error.message 
+        });
     }
 }
-
 
 // VERIFY-EMAIL
 export const verifyEmail = async (req: Request<{ token: string }>, res: Response) => {
