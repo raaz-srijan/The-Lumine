@@ -1,12 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { Role } from "../models/roleSchema.js";
 
-/**
- * RBAC Middleware
- * Supports:
- * 1. Role-based check: rbac(["admin", "owner", "staff"])
- * 2. Permission-based check: rbac("read:inventory")
- */
 export const rbac = (requirement: string | string[]) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -22,7 +16,6 @@ export const rbac = (requirement: string | string[]) => {
         return next();
       }
 
-      // 2. Role-based check (Array of allowed roles)
       if (Array.isArray(requirement)) {
         if (requirement.map(r => r.toLowerCase()).includes(userRoleName)) {
           return next();
@@ -33,8 +26,6 @@ export const rbac = (requirement: string | string[]) => {
         });
       }
 
-      // 3. Permission-based check (Single string requirement)
-      // Fetch the role from DB with populated permissions
       const roleDoc = await Role.findOne({ name: userRoleName }).populate("permissions");
       
       if (!roleDoc) {
@@ -44,7 +35,6 @@ export const rbac = (requirement: string | string[]) => {
         });
       }
 
-      // Check if any of the role's permissions match the requirement
       const hasPermission = (roleDoc.permissions as any[]).some(
         (p) => p.name === requirement
       );

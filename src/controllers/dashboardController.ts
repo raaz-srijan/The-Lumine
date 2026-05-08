@@ -8,7 +8,6 @@ import { Category } from "../models/categorySchema.js";
 export const getAdminDashboardStats = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
-    // Fetch counts in parallel
     const now = new Date();
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(now.getDate() - 7);
@@ -22,10 +21,12 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       recentAppointments,
       revenueData,
       weeklyRevenue,
-      statusDistribution
+      statusDistribution,
+      staffPerformance,
+      categoryDistribution
     ] = await Promise.all([
-      Inventory.countDocuments(),
-      Inventory.countDocuments({ $expr: { $lte: ["$stock", "$minStock"] } }),
+      Inventory.countDocuments({ isDeleted: false }),
+      Inventory.countDocuments({ isDeleted: false, $expr: { $lte: ["$stock", "$minStock"] } }),
       Appointment.countDocuments(),
       Category.countDocuments(),
       User.countDocuments({ _id: { $ne: userId } }),
@@ -37,7 +38,6 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         { $match: { paymentStatus: "paid" } },
         { $group: { _id: null, total: { $sum: "$totalAmount" } } }
       ]),
-      // Weekly revenue aggregation
       Appointment.aggregate([
         {
           $match: {
@@ -53,7 +53,6 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         },
         { $sort: { _id: 1 } }
       ]),
-      // Status distribution aggregation
       Appointment.aggregate([
         {
           $group: {
@@ -61,6 +60,36 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
             count: { $sum: 1 }
           }
         }
+      ]),
+      Appointment.aggregate([
+        { $match: { status: "completed" } },
+        { $group: { _id: "$staffId", totalRevenue: { $sum: "$totalAmount" }, count: { $sum: 1 } } },
+        { $sort: { totalRevenue: -1 } },
+        { $limit: 5 },
+        {
+          $lookup: {
+            from: "users",
+            localField: "_id",
+            foreignField: "_id",
+            as: "staff"
+          }
+        },
+        { $unwind: "$staff" },
+        { $project: { name: "$staff.name", totalRevenue: 1, count: 1 } }
+      ]),
+      Inventory.aggregate([
+        { $match: { isDeleted: false } },
+        { $group: { _id: "$category", count: { $sum: 1 } } },
+        {
+          $lookup: {
+            from: "categories",
+            localField: "_id",
+            foreignField: "_id",
+            as: "cat"
+          }
+        },
+        { $unwind: "$cat" },
+        { $project: { name: "$cat.name", count: 1 } }
       ])
     ]);
 
@@ -72,13 +101,15 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         stats: {
           inventory: {
             total: totalInventory,
-            lowStock: lowStockItems
+            lowStock: lowStockItems,
+            categoryDistribution
           },
           appointments: {
             total: totalAppointments,
             recent: recentAppointments,
-            weeklyRevenue: weeklyRevenue,
-            statusDistribution: statusDistribution
+            weeklyRevenue,
+            statusDistribution,
+            staffPerformance
           },
           categories: totalCategories,
           staff: totalStaff,
@@ -97,7 +128,12 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
 
 export const getStaffDashboardStats = async (req: Request, res: Response) => {
   try {
-    const userId = new mongoose.Types.ObjectId(req.user?.id);
+    const rawUserId = req.user?.id;
+
+    if (!rawUserId) 
+        return res.status(401).json({success: false, message: "Unauthorized user",});
+      
+    const userId = new mongoose.Types.ObjectId(rawUserId);
     const now = new Date();
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
@@ -162,12 +198,11 @@ export const getStaffDashboardStats = async (req: Request, res: Response) => {
         { $sort: { count: -1 } },
         { $limit: 3 }
       ]),
-      Inventory.countDocuments({ addedBy: userId })
+      Inventory.countDocuments({ addedBy: userId, isDeleted: false })
     ]);
 
     const totalRevenue = revenueData.length > 0 ? revenueData[0].total : 0;
     
-    // Calculate performance metrics
     const completed = statusDistribution.find(d => d._id === "completed")?.count || 0;
     const cancelled = statusDistribution.find(d => d._id === "cancelled")?.count || 0;
     const completionRate = totalAppointments > 0 ? Math.round((completed / totalAppointments) * 100) : 0;
@@ -183,16 +218,13 @@ export const getStaffDashboardStats = async (req: Request, res: Response) => {
             cancelled,
             completionRate,
             recent: recentAppointments,
-            weeklyRevenue: weeklyRevenue, // Keep here for chart compatibility
+            weeklyRevenue,
             statusDistribution,
             topServices
           },
           inventory: {
-            total: 0, // Staff doesn't see total inventory count for privacy/security
-            lowStock: 0,
             managed: inventoryCount
           },
-          categories: 0,
           revenue: totalRevenue
         }
       }
@@ -213,4 +245,3 @@ export const getDashboardStats = async (req: Request, res: Response) => {
   }
   return getStaffDashboardStats(req, res);
 };
-
